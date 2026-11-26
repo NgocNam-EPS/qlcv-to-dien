@@ -161,6 +161,8 @@ tr:hover td{background:#f2f7fd}
 .lg-err{color:var(--bad);font-size:13px;margin-top:10px}
 #lgMsg:not(.lg-err){font-size:13px;color:var(--mut);margin-top:10px}
 .lg-help{margin-top:16px;padding-top:12px;border-top:1px solid var(--bd);font-size:12px;color:var(--mut);line-height:1.5}
+.otself{background:#f5f9ff;border:1px solid #cfe0f5;border-radius:8px;padding:12px 14px;margin-bottom:16px}.otself h3{margin-top:0}
+.otm{width:72px;text-align:right;padding:4px 6px}tr.otme td{background:#fff8e1}
 </style>
 </head>
 <body>
@@ -622,7 +624,7 @@ function vOT(){
   ${memSel(ui.oMem,"ui.oMem=this.value;render()")}<span class="sp"></span>
   <span class="mut">Giới hạn: ${S.otMonth}h/tháng, ${S.otYear}h/năm (sửa ở Cài đặt)</span>
   <button class="btn" onclick="xlsOT()">Xuất Excel</button><button class="btn" onclick="print()">In</button><button class="btn p" onclick="editOT()">+ Thêm giờ</button></div>
- <h3>Tổng hợp tháng ${fm(m)}</h3>
+ ${otSelfCard(m)}<h3>Tổng hợp tháng ${fm(m)}</h3>
  <div class="tw"><table><tr><th class="c">TT</th><th>MNV</th><th>Họ tên</th>${S.otCats.map(t=>`<th class="r" title="${esc(t.full)}">${esc(t.name)}</th>`).join('')}<th class="r">Tổng giờ tháng</th><th class="r">Giờ quy đổi</th><th class="r">Lũy kế năm ${y}</th><th>Cảnh báo</th></tr>
  ${rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td>${esc(r.x.code||'')}</td><td>${esc(r.x.name)}</td>${S.otCats.map(t=>`<td class="r">${r.by[t.id]||''}</td>`).join('')}<td class="r"><b>${r.tot||''}</b></td><td class="r">${r.qd||''}</td><td class="r">${r.yr||''}</td>
   <td>${r.tot>S.otMonth?`<span class="tag bad">Vượt ${r2(r.tot-S.otMonth)}h/tháng</span> `:r.tot>S.otMonth*.8?'<span class="tag w">Gần giới hạn tháng</span> ':''}${r.yr>S.otYear?`<span class="tag bad">Vượt ${r2(r.yr-S.otYear)}h/năm</span>`:r.yr>S.otYear*.8?'<span class="tag w">Gần giới hạn năm</span>':''}</td></tr>`).join('')}
@@ -636,6 +638,31 @@ function vOT(){
  <div class="card"><div class="toolbar"><h3 style="margin:0">Tổng hợp thêm giờ cả năm</h3><select onchange="ui.oYear=this.value;render()">${yearOpts(ui.oYear,db.ot.map(o=>o.date.slice(0,4)))}</select><span class="sp"></span><button class="btn" onclick="xlsOTYear()">Xuất Excel năm</button></div>
  <div class="tw">${otYearTable(ui.oYear,false)}</div><p class="mut">Ô đỏ: vượt giới hạn ${S.otMonth}h/tháng hoặc ${S.otYear}h/năm.</p></div>`;
 }
+
+/* ---- Kê khai giờ làm thêm theo tháng: mỗi người tự cập nhật dòng của mình ---- */
+const otAggOf=(mid,m,cat)=>db.ot.find(o=>o.agg&&o.member===mid&&o.date.startsWith(m)&&(o.cat||'SXD')===cat);
+function otSelfCard(m){const S=db.settings,mem=activeMembers();const me=typeof CUR!=='undefined'?CUR:{offline:true,perm:'admin'};
+ const canRow=id=>me.perm!=='xem'&&(me.perm==='admin'||me.perm==='duyet'||id===me.mid);const mgr=me.perm==='admin'||me.perm==='duyet';
+ const rows=mem.map((x,i)=>{const recs=db.ot.filter(o=>o.member===x.id&&o.date.startsWith(m));const ok=canRow(x.id);
+  const cells=S.otCats.map(t=>{const a=otAggOf(x.id,m,t.id),det=r2(recs.filter(o=>!o.agg&&(o.cat||'SXD')===t.id&&o.approved!=='khong').reduce((s,o)=>s+num(o.hours),0));
+   return `<td class="r">${ok?`<input type="number" step="0.5" min="0" class="otm" value="${a?a.hours:''}" placeholder="0" onchange="otMSet('${x.id}','${t.id}',this.value)">`:`<b>${a?a.hours:''}</b>`}${det?`<div class="mut" title="Giờ nhập chi tiết từng lần, được cộng thêm vào tổng">+${det} chi tiết</div>`:''}</td>`}).join('');
+  const tot=r2(recs.filter(o=>o.approved!=='khong').reduce((s,o)=>s+num(o.hours),0)),pend=recs.filter(o=>(o.approved||'cho')==='cho').length,has=recs.length;
+  const st=!has?'<span class="mut">Chưa kê khai</span>':pend?`<span class="tag w">Chờ duyệt (${pend})</span>`:'<span class="tag ok">Đã duyệt</span>';
+  return `<tr class="${x.id===me.mid?'otme':''}"><td class="c">${i+1}</td><td>${esc(x.name)}${x.id===me.mid?' <span class="tag b">Tôi</span>':''}</td>${cells}<td class="r"><b>${tot||''}</b>${tot>S.otMonth?' <span class="tag bad">Vượt</span>':''}</td><td>${st}</td><td class="noprint">${mgr&&pend?`<button class="btn s" onclick="otMAppr('${x.id}')">Duyệt tháng</button>`:''}</td></tr>`}).join('');
+ return `<div class="otself"><h3>Kê khai giờ làm thêm tháng ${fm(m)}</h3>
+ <p class="mut" style="margin:0 0 8px">${me.offline?'Nhập tổng số giờ làm thêm trong tháng của từng người theo lĩnh vực.':mgr?'Mỗi thành viên tự nhập tổng giờ làm thêm trong tháng của mình. Tổ trưởng/Tổ phó kiểm tra rồi bấm "Duyệt tháng".':'Nhập tổng số giờ làm thêm trong tháng của bạn theo từng lĩnh vực (dòng được tô màu). Tổ trưởng/Tổ phó sẽ duyệt.'} Đã nhập chi tiết từng lần ở nút "+ Thêm giờ" thì không cần kê khai lại phần đó, vì số giờ chi tiết được cộng thêm vào tổng.</p>
+ <div class="tw"><table><tr><th class="c">TT</th><th>Họ tên</th>${S.otCats.map(t=>`<th class="r" title="${esc(t.full)}">${esc(t.name)}</th>`).join('')}<th class="r">Tổng tháng</th><th>Tình trạng</th><th class="noprint"></th></tr>${rows}</table></div></div>`}
+function otMSet(mid,cat,v){const me=typeof CUR!=='undefined'?CUR:{perm:'admin'};const mgr=me.perm==='admin'||me.perm==='duyet';
+ if(me.perm==='xem'||(!mgr&&mid!==me.mid)){alert('Bạn chỉ được kê khai giờ làm thêm của chính mình.');return render()}
+ const m=ui.oMonth,h=r2(num(v));if(h<0||h>300){alert('Số giờ không hợp lệ');return render()}
+ let a=otAggOf(mid,m,cat);
+ if(a&&a.approved==='duyet'&&!mgr&&!confirm('Số giờ tháng này đã được duyệt. Sửa lại sẽ phải chờ duyệt lại. Tiếp tục?'))return render();
+ if(!h){if(a)db.ot=db.ot.filter(o=>o!==a)}
+ else{if(!a){a={id:'a'+uid(),date:m+'-01',member:mid,start:'',end:'',type:'thuong',cat,agg:true,coef:otType('thuong').coef,content:'Kê khai tổng hợp tháng '+fm(m)};db.ot.push(a)}
+  a.hours=h;a.approved=mgr?'duyet':'cho';a.note=(me.user?'Kê khai bởi '+me.user:'Kê khai tháng')+' ngày '+fd(TODAY)}
+ save();render()}
+function otMAppr(mid){const me=typeof CUR!=='undefined'?CUR:{perm:'admin'};if(!(me.perm==='admin'||me.perm==='duyet'))return alert('Chỉ Tổ trưởng/Tổ phó được duyệt.');
+ const list=db.ot.filter(o=>o.member===mid&&o.date.startsWith(ui.oMonth)&&(o.approved||'cho')==='cho');list.forEach(o=>o.approved='duyet');save();render()}
 const otCat=id=>db.settings.otCats.find(c=>c.id===(id||'SXD'))||{name:id||'',full:''};
 const otH=(mid,prefix,cat)=>r2(db.ot.filter(o=>o.member===mid&&o.date.startsWith(prefix)&&o.approved!=='khong'&&(!cat||(o.cat||'SXD')===cat)).reduce((a,o)=>a+num(o.hours),0));
 function otYearTable(y,forXls){const S=db.settings,C=S.otCats,ms=[...Array(12)].map((_,i)=>y+'-'+pad(i+1));
