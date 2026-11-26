@@ -121,6 +121,30 @@ tr:hover td{background:#fafcff}
 .stat.sel{border-color:var(--pri);box-shadow:inset 0 -3px 0 var(--pri)}
 .grow td{background:#e8f0fa;font-weight:600;color:var(--pri)}
 .ptitle{display:none;text-align:center;margin-bottom:10px}
+/* ===== Giao diện màu (v2) ===== */
+:root{--pri:#0d4f8b;--pri2:#dce8f6;--bd:#d3dbe6;--bg:#eef2f7;--ok:#1b7a34;--bad:#c62828}
+header{background:linear-gradient(90deg,#0d4f8b,#1565c0)}
+nav{box-shadow:0 1px 3px rgba(0,0,0,.06)}
+nav button{border-radius:6px 6px 0 0;margin-top:4px}
+nav button:hover{color:var(--pri);background:#f1f5fb}
+nav button.on{background:#e8f0fa}
+.card{border:0;box-shadow:0 1px 3px rgba(16,40,80,.08),0 1px 2px rgba(16,40,80,.04);border-top:3px solid #1565c0}
+.chart{border:1px solid #e1e7ef}
+th{background:#dce8f6;color:#0d3c6b}
+table tr:nth-child(even)>td{background:#fafcfe}
+tr:hover td{background:#f2f7fd}
+.stat{border:0;border-left:5px solid #1565c0;box-shadow:0 1px 3px rgba(16,40,80,.08);background:linear-gradient(90deg,#f3f8fe,#fff 60%);position:relative}
+.stat .ic{position:absolute;right:12px;top:10px;font-size:22px;opacity:.85}
+.stat .v{color:#0d4f8b}
+.stat.ok{border-left-color:#2e9d48;background:linear-gradient(90deg,#eef8f1,#fff 60%)}.stat.ok .v{color:#1b7a34}
+.stat.bad{border-left-color:#e04848;background:linear-gradient(90deg,#fdf0ef,#fff 60%)}.stat.bad .v{color:#c62828}
+.stat.pur{border-left-color:#6a4ce2;background:linear-gradient(90deg,#f3f0fd,#fff 60%)}.stat.pur .v{color:#4b33b5}
+.stat.org{border-left-color:#ef8a1f;background:linear-gradient(90deg,#fef5ea,#fff 60%)}.stat.org .v{color:#b45f06}
+.stat.tea{border-left-color:#00a389;background:linear-gradient(90deg,#e9f8f5,#fff 60%)}.stat.tea .v{color:#00796b}
+.tag.ok{background:#dff3e5;color:#1b7a34;font-weight:600}.tag.bad{background:#fde3e1;color:#c62828;font-weight:600}
+.grow td{background:#dce8f6!important;color:#0d3c6b}
+.btn.p{background:#1565c0;border-color:#1565c0}.btn.p:hover{background:#0d4f8b}
+@media print{.card,.stat{box-shadow:none;border-top:0}}
 </style>
 </head>
 <body>
@@ -797,7 +821,7 @@ const evTag=e=>e==='Đạt'?'<span class="tag ok">Đạt</span>':e==='Không đ�
 function ktSummary(d){let ok=0,ko=0;db.ktkt.groups.forEach(g=>g.plants.forEach(pl=>g.inds.forEach(ind=>{const e=ktEval(ind.dir,ktCell(d,g,pl,ind));if(e==='Đạt')ok++;else if(e==='Không đạt')ko++})));return{ok,ko}}
 function vKT(){
  const wk=ui.kw,x=ktData(wk),d=x.d,n=wkNum(wk),s=ktSummary(d);
- const inp=(g,pl,ind,k,v)=>`<input style="width:66px;text-align:center;padding:3px;${k==='a'?'color:#1a56b8;font-weight:600':''}" value="${esc(v||'')}" data-g="${g.id}" data-pl="${esc(pl)}" data-ind="${esc(ind.name)}" data-k="${k}" onchange="ktSet(this)">`;
+ const inp=(g,pl,ind,k,v,e)=>`<input style="width:66px;text-align:center;padding:3px;${k==='a'?'font-weight:700;'+(e==='Đạt'?'color:#1b7a34;background:#e7f6ec;border-color:#9fd5af':e==='Không đạt'?'color:#c62828;background:#fdecea;border-color:#f3a6a0':'color:#1a56b8'):''}" value="${esc(v||'')}" data-g="${g.id}" data-pl="${esc(pl)}" data-ind="${esc(ind.name)}" data-k="${k}" onchange="ktSet(this)">`;
  const keys=Object.keys(db.ktkt.weeks).filter(k=>k<=wk).sort().slice(-8);
  return `<div class="card"><div class="toolbar"><h3 style="margin:0">Chỉ tiêu kinh tế - kỹ thuật</h3>
   <button class="btn s" onclick="shiftK(-1)">◀</button><input type="week" value="${wk}" onchange="if(this.value){ui.kw=this.value;render()}"><button class="btn s" onclick="shiftK(1)">▶</button>
@@ -808,7 +832,7 @@ function vKT(){
  ${db.ktkt.groups.map((g,gi)=>`<h4 style="margin:12px 0 6px">${gi+1}. ${esc(g.name)}</h4><div class="tw"><table>
   <tr><th rowspan="2" style="min-width:180px">Chỉ tiêu KT-KT</th>${g.plants.map(pl=>`<th colspan="3" class="c">${esc(pl)}</th>`).join('')}</tr>
   <tr>${g.plants.map(()=>'<th class="c">Chỉ tiêu</th><th class="c">Thực hiện</th><th class="c">Nhận xét</th>').join('')}</tr>
-  ${g.inds.map(ind=>`<tr><td>${esc(ind.name)}</td>${g.plants.map(pl=>{const c=ktCell(d,g,pl,ind)||{};const e=ktEval(ind.dir,c);return `<td class="c">${inp(g,pl,ind,'p',c.p)}</td><td class="c">${inp(g,pl,ind,'a',c.a)}</td>
+  ${g.inds.map(ind=>`<tr><td>${esc(ind.name)}</td>${g.plants.map(pl=>{const c=ktCell(d,g,pl,ind)||{};const e=ktEval(ind.dir,c);return `<td class="c">${inp(g,pl,ind,'p',c.p)}</td><td class="c">${inp(g,pl,ind,'a',c.a,e)}</td>
    <td class="c">${evTag(e)}<br><select class="noprint" style="font-size:11px;padding:1px" data-g="${g.id}" data-pl="${esc(pl)}" data-ind="${esc(ind.name)}" data-k="ev" onchange="ktSet(this)"><option value="">Tự động</option>${['Đạt','Không đạt','-'].map(o=>`<option value="${o}"${c.ev===o?' selected':''}>${o==='-'?'Để trống':o}</option>`).join('')}</select></td>`}).join('')}</tr>`).join('')}</table></div>
   <div class="fld" style="margin-top:6px"><label>Nhận xét</label><textarea data-g="${g.id}" data-k="nx" onchange="ktSet(this)" style="min-height:54px">${esc((d.nx||{})[g.id]||'')}</textarea></div>`).join('')}
  ${vSC(x,wk)}
@@ -861,6 +885,7 @@ ${db.ktkt.scPlants.map(pl=>{const o=(d.dang||{})[pl]||{};return `<tr><td style="
 }
 
 /* ================= BIỂU ĐỒ (SVG tự vẽ, chạy offline) ================= */
+const C_OK='#2e9d48',C_KO='#e04848';
 const SER=['#257de0','#f47230','#00b894','#f2a600','#ee7fac','#008a17','#6a4ce2','#ec4647'],C_PREV='#b4b9c0',C_TX='#1f2933',C_MUT='#6b7785',C_GRID='#e6e9ee',ST_OK='#0a8f1f',ST_KO='#dc3c3d';
 const fN=n=>n==null?'':String(r2(n)).replace('.',',');
 const tipA=s=>esc(s).replace(/\n/g,'&#10;');
@@ -876,11 +901,11 @@ function bulletChart(title,rows){
  rows.forEach((r,i)=>{const y=top+i*rh,cy=y+rh/2;const ok=r.ev==='Đạt',ko=r.ev==='Không đạt';
   g+=`<g data-tip="${tipA(`${r.plant}\nThực hiện: ${r.as||'—'}\nChỉ tiêu: ${r.ps||'—'}${r.ev?'\nĐánh giá: '+r.ev:''}`)}"><rect x="0" y="${y}" width="${W}" height="${rh}" fill="transparent"/>
   <text x="${L-8}" y="${cy+4}" font-size="12" fill="${C_TX}" text-anchor="end">${esc(r.plant)}</text>
-  ${r.a!=null?`<path d="${hbarPath(L,cy-7,sx(r.a)-L,14,4)}" fill="${SER[0]}"/>`:''}
+  ${r.a!=null?`<path d="${hbarPath(L,cy-7,sx(r.a)-L,14,4)}" fill="${ok?C_OK:ko?C_KO:SER[0]}"/>`:''}
   ${r.p!=null?`<line x1="${sx(r.p)}" x2="${sx(r.p)}" y1="${cy-12}" y2="${cy+12}" stroke="${C_TX}" stroke-width="2.5"/>`:''}
   <text x="${L+P+8}" y="${cy-1}" font-size="12" fill="${C_TX}" font-weight="600">${esc(r.as||'—')}<tspan fill="${C_MUT}" font-weight="400"> / ${esc(r.ps||'—')}</tspan></text>
   ${r.ev?`<text x="${L+P+8}" y="${cy+13}" font-size="11" font-weight="600" fill="${ok?ST_OK:ST_KO}">${ok?'✓ Đạt':'✗ Không đạt'}</text>`:''}</g>`});
- return `<div class="chart"><div class="ct">${esc(title)}</div><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(title)}">${g}</svg>${legendHtml([[SER[0],'Thực hiện'],[C_TX,'Chỉ tiêu','tick']])}</div>`;
+ return `<div class="chart"><div class="ct">${esc(title)}</div><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(title)}">${g}</svg>${legendHtml([...(rows.some(r=>r.ev==='Đạt')?[[C_OK,'Thực hiện - Đạt']]:[]),...(rows.some(r=>r.ev==='Không đạt')?[[C_KO,'Thực hiện - Không đạt']]:[]),...(rows.some(r=>!r.ev)?[[SER[0],'Thực hiện']]:[]),[C_TX,'Chỉ tiêu','tick']])}</div>`;
 }
 // Lũy kế năm so với cùng kỳ năm trước
 function incCompareChart(d,y){
@@ -891,9 +916,9 @@ function incCompareChart(d,y){
  rows.forEach((r,i)=>{const y=top+i*rh,cy=y+rh/2;const diff=r.ly!=null&&r.ck!=null?r.ly-r.ck:null;
   g+=`<g data-tip="${tipA(`${r.pl}\nLũy kế năm ${y}: ${r.ly??'—'}\nCùng kỳ năm ${y-1}: ${r.ck??'—'}${diff!=null?'\n'+(diff>0?'Tăng '+diff:diff<0?'Giảm '+(-diff):'Bằng cùng kỳ'):''}`)}"><rect x="0" y="${y}" width="${W}" height="${rh}" fill="transparent"/>
   <text x="${L-8}" y="${cy+4}" font-size="12" fill="${C_TX}" text-anchor="end">${esc(r.pl)}</text>
-  ${r.ly?`<path d="${hbarPath(L,cy-11,sx(r.ly)-L,10,3)}" fill="${SER[0]}"/>`:''}<text x="${sx(r.ly||0)+5}" y="${cy-2}" font-size="11" fill="${C_TX}" font-weight="600">${r.ly??''}</text>
+  ${r.ly?`<path d="${hbarPath(L,cy-11,sx(r.ly)-L,10,3)}" fill="${diff!=null&&diff>0?C_KO:diff!=null?C_OK:SER[0]}"/>`:''}<text x="${sx(r.ly||0)+5}" y="${cy-2}" font-size="11" fill="${C_TX}" font-weight="600">${r.ly??''}</text>
   ${r.ck?`<path d="${hbarPath(L,cy+1,sx(r.ck)-L,10,3)}" fill="${C_PREV}"/>`:''}<text x="${sx(r.ck||0)+5}" y="${cy+10}" font-size="11" fill="${C_MUT}">${r.ck??''}</text></g>`});
- return `<div class="chart"><div class="ct">Sự cố lũy kế năm ${y} so với cùng kỳ năm ${y-1}</div><svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${g}</svg>${legendHtml([[SER[0],'Lũy kế năm '+y],[C_PREV,'Cùng kỳ năm '+(y-1)]])}</div>`;
+ return `<div class="chart"><div class="ct">Sự cố lũy kế năm ${y} so với cùng kỳ năm ${y-1}</div><svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${g}</svg>${legendHtml([[C_KO,'Lũy kế năm '+y+' - tăng so cùng kỳ'],[C_OK,'Lũy kế năm '+y+' - giảm/bằng'],[C_PREV,'Cùng kỳ năm '+(y-1)]])}</div>`;
 }
 // Cơ cấu các dạng sự cố (thanh chồng)
 function incTypeChart(d){
@@ -952,12 +977,12 @@ function vDash(){
  const next=db.schedule.filter(s=>s.to>=TODAY&&s.from<=addDays(TODAY,14)).sort((a,b)=>a.from.localeCompare(b.from));
  const yS=y+'-01-01',yE=y+'-12-31';const pend=db.ot.filter(o=>(o.approved||'cho')==='cho').length;
  return `<div class="stats">
-  <div class="stat lk" onclick="goTasks('${y}','')" title="Xem danh sách"><div class="v">${ts.length}</div><div class="l">Công tác trọng tâm năm ${y}</div></div>
-  <div class="stat ok lk" onclick="goTasks('${y}','xong')" title="Xem danh sách"><div class="v">${c('xong')}</div><div class="l">Đã hoàn thành</div></div>
-  <div class="stat bad lk" onclick="goTasks('${y}','quahan')" title="Xem danh sách"><div class="v">${c('quahan')}</div><div class="l">Quá hạn</div></div>
-  <div class="stat lk" onclick="showProgress('${y}')" title="Xem tiến độ từng công tác"><div class="v">${avg}%</div><div class="l">Tiến độ bình quân</div></div>
-  <div class="stat lk" onclick="ui.oMonth=THIS_MONTH;ui.oMem='';go('ot')" title="Xem chi tiết thêm giờ"><div class="v">${otM}h</div><div class="l">Thêm giờ tháng ${fm(THIS_MONTH)}${pend?` · <span style="color:var(--warn)">${pend} chờ duyệt</span>`:''}</div></div>
-  <div class="stat lk" onclick="showToday()" title="Xem ai có lịch hôm nay"><div class="v">${today.reduce((a,s)=>a+s.members.length,0)}</div><div class="l">Lượt người có lịch hôm nay</div></div></div>
+  <div class="stat lk" onclick="goTasks('${y}','')" title="Xem danh sách"><span class="ic">📋</span><div class="v">${ts.length}</div><div class="l">Công tác trọng tâm năm ${y}</div></div>
+  <div class="stat ok lk" onclick="goTasks('${y}','xong')" title="Xem danh sách"><span class="ic">✅</span><div class="v">${c('xong')}</div><div class="l">Đã hoàn thành</div></div>
+  <div class="stat bad lk" onclick="goTasks('${y}','quahan')" title="Xem danh sách"><span class="ic">⏰</span><div class="v">${c('quahan')}</div><div class="l">Quá hạn</div></div>
+  <div class="stat lk pur" onclick="showProgress('${y}')" title="Xem tiến độ từng công tác"><span class="ic">📈</span><div class="v">${avg}%</div><div class="l">Tiến độ bình quân</div></div>
+  <div class="stat lk org" onclick="ui.oMonth=THIS_MONTH;ui.oMem='';go('ot')" title="Xem chi tiết thêm giờ"><span class="ic">🕒</span><div class="v">${otM}h</div><div class="l">Thêm giờ tháng ${fm(THIS_MONTH)}${pend?` · <span style="color:var(--warn)">${pend} chờ duyệt</span>`:''}</div></div>
+  <div class="stat lk tea" onclick="showToday()" title="Xem ai có lịch hôm nay"><span class="ic">🧳</span><div class="v">${today.reduce((a,s)=>a+s.members.length,0)}</div><div class="l">Lượt người có lịch hôm nay</div></div></div>
  ${vKT()}
  ${!db.lastBackup?'<div class="warnbox">Dữ liệu đang được lưu trong trình duyệt của máy này. Nên vào <b>Thành viên &amp; Cài đặt → Sao lưu dữ liệu</b> định kỳ (mỗi tuần) để tránh mất dữ liệu.</div>':''}
  <div class="grid2">
