@@ -275,8 +275,13 @@ function fixLead(){let ch=0;db.tasks.forEach(t=>{if(t.lead||!t.others)return;con
 fixLead();
 const GRPS=()=>db.settings.taskGroups||[];
 const grpIdx=g=>{const i=GRPS().indexOf(g||'');return i<0?(g?90:99):i};
-const grpLabel=g=>{const i=GRPS().indexOf(g||'');return i<0?(g||'Chưa phân lĩnh vực'):(i+1)+'. '+g};
-const grpOpts=cur=>[['','-- Chọn lĩnh vực --'],...GRPS().map((g,i)=>[g,(i+1)+'. '+g]),...(cur&&!GRPS().includes(cur)?[[cur,cur+' (cũ)']]:[])];
+const ROMAN=n=>['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'][n-1]||String(n);
+const grpLabel=g=>{const i=GRPS().indexOf(g||'');return i<0?(g||'Chưa phân lĩnh vực'):ROMAN(i+1)+'. '+g};
+const grpHd=B=>{const k=B.label.indexOf('. ');return k<0?['',B.label+' ('+B.items.length+' công tác)']:[B.label.slice(0,k),B.label.slice(k+2)+' ('+B.items.length+' công tác)']};
+/* Luôn đủ các nhóm lĩnh vực (kể cả nhóm 0 công tác); sel = chỉ một nhóm khi đang lọc */
+function grpBuckets(items,sel){const G=GRPS();const keys=sel?[sel]:[...G];if(!sel)items.forEach(x=>{const g=x.group||'';if(!keys.includes(g))keys.push(g)});
+ return keys.map(g=>({g,label:grpLabel(g),items:items.filter(x=>(x.group||'')===g)}))}
+const grpOpts=cur=>[['','-- Chọn lĩnh vực --'],...GRPS().map((g,i)=>[g,ROMAN(i+1)+'. '+g]),...(cur&&!GRPS().includes(cur)?[[cur,cur+' (cũ)']]:[])];
 function guessGrp(t){const x=(t.name+' '+(t.content||'')).normalize('NFC').toLowerCase(),G=GRPS();
  if(/nâng giữ bậc|nâng-giữ bậc|\bngb\b/.test(x))return G[2];if(/chuyên gia/.test(x))return G[4];
  if(/sáng kiến|sáng tạo|khcn|đề tài|trí tuệ nhân tạo|\(ai\)/.test(x))return G[3];if(/\bscl\b|\bsxk\b|pakt|đại tu|trung tu|tiểu tu/.test(x))return G[1];return G[5]}
@@ -413,27 +418,27 @@ function vTasks(){
   <label>Năm</label><select onchange="ui.tYear=this.value;render()">${yearOpts(ui.tYear,db.tasks.map(t=>t.year))}</select>
   ${memSel(ui.tMem,"ui.tMem=this.value;render()")}
   <select onchange="ui.tSt=this.value;render()"><option value="">Tất cả trạng thái</option>${Object.entries(SLB).map(([k,v])=>`<option value="${k}"${ui.tSt===k?' selected':''}>${v}</option>`).join('')}</select>
-  <select onchange="ui.tGrp=this.value;render()"><option value="">Tất cả lĩnh vực</option>${GRPS().map((g,i)=>`<option value="${esc(g)}"${ui.tGrp===g?' selected':''}>${i+1}. ${esc(g)}</option>`).join('')}</select>
+  <select onchange="ui.tGrp=this.value;render()"><option value="">Tất cả lĩnh vực</option>${GRPS().map((g,i)=>`<option value="${esc(g)}"${ui.tGrp===g?' selected':''}>${ROMAN(i+1)}. ${esc(g)}</option>`).join('')}</select>
   <input id="tq" placeholder="Tìm kiếm..." value="${esc(ui.tQ)}" oninput="ui.tQ=this.value;render();const e=document.getElementById('tq');e.focus();e.setSelectionRange(e.value.length,e.value.length)">
   <span class="sp"></span>
   <button class="btn" onclick="copyTasks()" title="Chép công tác chưa xong của năm trước sang năm đang chọn">Chuyển tiếp từ năm trước</button>
   <button class="btn" onclick="xlsTasks()">Xuất Excel</button><button class="btn" onclick="print()">In</button>
   <button class="btn p" onclick="editTask()">+ Thêm công tác</button></div>
  <div class="tw"><table><tr><th class="c">TT</th><th>Công tác trọng tâm</th><th>Chủ trì / Phối hợp</th><th>Thời hạn</th><th>Tiến độ</th><th>Trạng thái</th><th>Tình hình triển khai gần nhất</th><th>Kết quả</th><th class="noprint"></th></tr>
- ${ts.length?ts.map((t,i)=>{const u=lastUpd(t);const gh=i===0||(ts[i-1].group||'')!==(t.group||'')?`<tr class="grow"><td colspan="9">${esc(grpLabel(t.group))} <span class="mut">(${ts.filter(x=>(x.group||'')===(t.group||'')).length} công tác)</span></td></tr>`:'';return gh+`<tr><td class="c">${i+1}</td>
+ ${(()=>{let i=-1;return grpBuckets(ts,ui.tGrp).map(B=>`<tr class="grow"><td colspan="9">${esc(B.label)} <span class="mut">(${B.items.length} công tác)</span></td></tr>`+B.items.map(t=>{i++;const u=lastUpd(t);return `<tr><td class="c">${i+1}</td>
   <td><a href="#" onclick="viewTask('${t.id}');return false"><b>${esc(t.name)}</b></a>${t.content?`<div class="mut">${nl(t.content).slice(0,300)}</div>`:''}</td>
   <td><b>${esc(mName(t.lead))}</b>${(t.support||[]).length||t.others?`<div class="mut">${esc([...(t.support||[]).map(mName),t.others].filter(Boolean).join(', '))}</div>`:''}</td>
   <td>${t.deadlineText?esc(t.deadlineText):`<span style="white-space:nowrap">${fd(t.deadline)}</span>`}</td><td>${pBar(t)}</td><td>${stTag(t)}</td>
   <td>${u?`<div class="mut">${fd(u.date)}</div>${nl(u.text)}`:'<span class="mut">—</span>'}</td><td>${nl(t.result)}</td>
-  <td class="acts"><button class="btn s p" onclick="updTask('${t.id}')">Cập nhật</button><button class="btn s" onclick="editTask('${t.id}')">Sửa</button><button class="btn s d" onclick="delTask('${t.id}')">Xóa</button></td></tr>`}).join('')
-  :`<tr><td colspan="9" class="empty">Chưa có công tác nào. Bấm "+ Thêm công tác" để nhập kế hoạch đầu năm.</td></tr>`}</table></div></div>`;
+  <td class="acts"><button class="btn s p" onclick="updTask('${t.id}')">Cập nhật</button><button class="btn s" onclick="editTask('${t.id}')">Sửa</button><button class="btn s d" onclick="delTask('${t.id}')">Xóa</button></td></tr>`}).join('')).join('')})()}</table></div></div>`;
 }
 function xlsTasks(){
  exportXls('CongTacTrongTam_'+ui.tYear,'KẾT QUẢ THỰC HIỆN CÔNG TÁC TRỌNG TÂM NĂM '+ui.tYear,
   ['TT','Lĩnh vực','Tên công tác','Nội dung, mục tiêu','Chủ trì','Phối hợp','Bắt đầu','Thời hạn','Tiến độ (%)','Trạng thái','Tình hình triển khai','Kết quả dự kiến','Kết quả thực hiện','Ghi chú'],
-  filteredTasks().map((t,i)=>[i+1,t.group,t.name,t.content,mName(t.lead),(t.support||[]).map(mName).join(', '),fd(t.start),t.deadlineText||fd(t.deadline),num(t.progress),SLB[tState(t)],
-   (t.updates||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)).map(u=>fd(u.date)+': '+u.text).join('\n'),t.expected,t.result,t.note]));
+  (()=>{let i=0;const R=[];grpBuckets(filteredTasks(),ui.tGrp).forEach(B=>{R.push([...grpHd(B),'','','','','','','','','','','','']);B.items.forEach(t=>R.push(rowT(t,++i)))});return R})());
 }
+function rowT(t,i){return [i,t.group,t.name,t.content,mName(t.lead),(t.support||[]).map(mName).join(', '),fd(t.start),t.deadlineText||fd(t.deadline),num(t.progress),SLB[tState(t)],
+   (t.updates||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)).map(u=>fd(u.date)+': '+u.text).join('\n'),t.expected,t.result,t.note]}
 
 /* ================= BÁO CÁO TUẦN (theo mẫu giao ban) ================= */
 function weekMonday(wk){const[y,w]=wk.split('-W').map(Number);const j4=new Date(y,0,4);const d=(j4.getDay()+6)%7;return isoOf(new Date(y,0,4-d+(w-1)*7))}
@@ -589,12 +594,12 @@ function vPlan(){
  else if(ui.pView==='tree'){
   const rowsOf=(p,depth,idx)=>{const k=plKids(p.id);return `<tr${depth?'':' style="background:#f7f9fc"'}><td class="c">${depth?'':idx}</td><td style="padding-left:${8+depth*26}px">${depth?plBadge(p)+' ':''}${depth?esc(p.name):`<b>${esc(p.name)}</b>${p.group?`<div class="mut">${esc(p.group)}</div>`:''}`}${p.content?`<div class="mut">${nl(p.content)}</div>`:''}</td>
    <td>${esc(staffOf(p))}</td><td>${depth?'':esc(p.deadlineText||fd(p.deadline))}</td><td>${nl(p.expected)}</td><td class="c">${depth?'':(p.taskId&&db.tasks.some(t=>t.id===p.taskId)?'<span class="tag ok">Đã đưa vào</span>':'<span class="tag g">Chưa</span>')}</td><td class="acts">${acts(p)}</td></tr>`+k.map(c=>rowsOf(c,depth+1)).join('')};
-  body=`<div class="tw"><table><tr><th class="c">TT</th><th style="min-width:340px">Công tác / kế hoạch chi tiết</th><th>Nhân sự</th><th>Thời hạn</th><th>Kết quả dự kiến</th><th class="c">CT trọng tâm</th><th class="noprint"></th></tr>${roots.map((p,i)=>(i===0||(roots[i-1].group||'')!==(p.group||'')?`<tr class="grow"><td colspan="7">${esc(grpLabel(p.group))} <span class="mut">(${roots.filter(x=>(x.group||'')===(p.group||'')).length})</span></td></tr>`:'')+rowsOf(p,0,i+1)).join('')}</table></div>`;
+  body=`<div class="tw"><table><tr><th class="c">TT</th><th style="min-width:340px">Công tác / kế hoạch chi tiết</th><th>Nhân sự</th><th>Thời hạn</th><th>Kết quả dự kiến</th><th class="c">CT trọng tâm</th><th class="noprint"></th></tr>${(()=>{let i=0;return grpBuckets(roots).map(B=>`<tr class="grow"><td colspan="7">${esc(B.label)} <span class="mut">(${B.items.length} công tác)</span></td></tr>`+B.items.map(p=>rowsOf(p,0,++i)).join('')).join('')})()}</table></div>`;
  } else if(ui.pView==='quy'||ui.pView==='thang'){
   const cols=ui.pView==='quy'?[1,2,3,4]:[...Array(12)].map((_,i)=>i+1);const colOf=p=>ui.pView==='quy'?Math.ceil(plMonth(p)/3):plMonth(p);
   const cm=ui.pView==='thang'&&String(y)===TODAY.slice(0,4)?+TODAY.slice(5,7):ui.pView==='quy'&&String(y)===TODAY.slice(0,4)?Math.ceil(+TODAY.slice(5,7)/3):0;
   body=`<div class="tw"><table class="pmx"><tr><th style="min-width:220px">Công tác trọng tâm</th>${cols.map(c=>`<th class="c"${c===cm?' style="background:#ffe9a8"':''}>${ui.pView==='quy'?'Quý '+['I','II','III','IV'][c-1]:'T'+c}</th>`).join('')}</tr>
-  ${roots.map((p,i)=>{const ds=plDesc(p.id);return (i===0||(roots[i-1].group||'')!==(p.group||'')?`<tr class="grow"><td colspan="${cols.length+1}">${esc(grpLabel(p.group))}</td></tr>`:'')+`<tr><td><b>${esc(p.name)}</b><div class="mut">${esc(staffOf(p))}${p.deadlineText||p.deadline?' · '+esc(p.deadlineText||fd(p.deadline)):''}</div><button class="btn s noprint" style="margin-top:4px" onclick="editPlan(null,'${p.id}')">+ Chia nhỏ</button></td>${cols.map(c=>{const dl=p.deadline&&p.deadline.startsWith(String(y))&&(ui.pView==='quy'?Math.ceil(+p.deadline.slice(5,7)/3):+p.deadline.slice(5,7))===c;return `<td>${ds.filter(d=>colOf(d)===c).map(chip).join('')}${dl?`<div class="pchip" style="border-left-color:var(--bad);background:#fce8e6" title="Thời hạn hoàn thành">⏱ Hạn ${fd(p.deadline)}</div>`:''}</td>`}).join('')}</tr>`}).join('')}</table></div>`;
+  ${grpBuckets(roots).map(B=>`<tr class="grow"><td colspan="${cols.length+1}">${esc(B.label)} <span class="mut">(${B.items.length} công tác)</span></td></tr>`+B.items.map(p=>{const ds=plDesc(p.id);return `<tr><td><b>${esc(p.name)}</b><div class="mut">${esc(staffOf(p))}${p.deadlineText||p.deadline?' · '+esc(p.deadlineText||fd(p.deadline)):''}</div><button class="btn s noprint" style="margin-top:4px" onclick="editPlan(null,'${p.id}')">+ Chia nhỏ</button></td>${cols.map(c=>{const dl=p.deadline&&p.deadline.startsWith(String(y))&&(ui.pView==='quy'?Math.ceil(+p.deadline.slice(5,7)/3):+p.deadline.slice(5,7))===c;return `<td>${ds.filter(d=>colOf(d)===c).map(chip).join('')}${dl?`<div class="pchip" style="border-left-color:var(--bad);background:#fce8e6" title="Thời hạn hoàn thành">⏱ Hạn ${fd(p.deadline)}</div>`:''}</td>`}).join('')}</tr>`}).join('')).join('')}</table></div>`;
  } else {
   const ws=all.filter(p=>p.level==='tuan'&&p.w).sort((a,b)=>a.w.localeCompare(b.w)),byW={};ws.forEach(p=>(byW[p.w]=byW[p.w]||[]).push(p));
   body=Object.keys(byW).length?`<div class="tw"><table><tr><th style="width:170px">Tuần</th><th>Công việc dự kiến</th><th>Thuộc công tác</th><th>Nhân sự</th><th class="noprint"></th></tr>${Object.entries(byW).map(([w,ps])=>ps.map((p,i)=>`<tr>${i?'':`<td rowspan="${ps.length}"><b>Tuần ${wkNum(w)}</b><div class="mut">${fd(weekMonday(w))} – ${fd(addDays(weekMonday(w),6))}</div></td>`}<td>${esc(p.name)}${p.content?`<div class="mut">${nl(p.content)}</div>`:''}</td><td class="mut">${esc((plRoot(p)||{}).name||'')}</td><td>${esc(staffOf(p))}</td><td class="acts"><button class="btn s" onclick="editPlan('${p.id}')">Sửa</button><button class="btn s d" onclick="delPlan('${p.id}')">Xóa</button></td></tr>`).join('')).join('')}</table></div>`:'<div class="empty">Chưa có kế hoạch cấp tuần. Dùng nút "+ Chia nhỏ" ở một công tác để thêm mốc theo tuần.</div>';
@@ -609,7 +614,7 @@ function vPlan(){
 }
 function xlsPlan(){const y=+ui.pYear,rows=[];let i=0;
  const walk=(p,depth)=>{rows.push([depth?'':++i,depth?PLV[p.level]:'Năm',depth?plLabel(p):(p.deadlineText||fd(p.deadline)),('    '.repeat(depth))+p.name,p.content||'',staffOf(p),p.expected||'',depth?(plRoot(p)||{}).name||'':'']);plKids(p.id).forEach(k=>walk(k,depth+1))};
- db.plans.filter(p=>p.year==y&&!p.parent).forEach(p=>walk(p,0));
+ grpBuckets(db.plans.filter(p=>p.year==y&&!p.parent)).forEach(B=>{rows.push([grpHd(B)[0],'',grpHd(B)[1],'','','','','']);B.items.forEach(p=>walk(p,0))});
  exportXls('KeHoach_Nam'+y,'KẾ HOẠCH CÔNG TÁC NĂM '+y,['TT','Cấp','Thời gian','Nội dung công việc','Chi tiết / mục tiêu','Nhân sự phụ trách','Kết quả dự kiến','Thuộc công tác'],rows)}
 
 /* ================= 2. THÊM GIỜ ================= */
