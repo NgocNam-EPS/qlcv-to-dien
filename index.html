@@ -145,13 +145,29 @@ tr:hover td{background:#f2f7fd}
 .grow td{background:#dce8f6!important;color:#0d3c6b}
 .btn.p{background:#1565c0;border-color:#1565c0}.btn.p:hover{background:#0d4f8b}
 @media print{.card,.stat{box-shadow:none;border-top:0}}
+#who{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.who-b{font-size:12px;background:rgba(255,255,255,.15);padding:4px 10px;border-radius:12px;cursor:pointer;white-space:nowrap}
+.who-b:hover{background:rgba(255,255,255,.28)}
+.sync{font-size:12px;padding:4px 8px;white-space:nowrap}.sync.ok{color:#7ff0a0}.sync.dang{color:#ffd76a}.sync.loi{color:#ff9a9a;font-weight:600}
+#login{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:linear-gradient(135deg,#0b5394 0%,#1e7bd6 55%,#2fa58a 100%)}
+.lg-box{background:#fff;border-radius:12px;padding:28px 30px;width:360px;max-width:92vw;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.lg-box h2{margin:0;font-size:20px;color:var(--pri)}
+.lg-logo{width:46px;height:46px;border-radius:50%;background:#eaf2fb;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:10px}
+.lg-box label{display:block;font-size:13px;color:var(--mut);margin:10px 0 0}
+.lg-box label input:not([type=checkbox]){display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:9px 10px;font:inherit;font-size:15px;border:1px solid var(--bd);border-radius:6px}
+.lg-box .lg-ck{display:flex;gap:6px;align-items:center}
+.lg-btn{width:100%;margin-top:14px;padding:10px;font-size:15px}
+.lg-lnk{display:block;text-align:center;margin-top:10px;font-size:13px}
+.lg-err{color:var(--bad);font-size:13px;margin-top:10px}
+#lgMsg:not(.lg-err){font-size:13px;color:var(--mut);margin-top:10px}
+.lg-help{margin-top:16px;padding-top:12px;border-top:1px solid var(--bd);font-size:12px;color:var(--mut);line-height:1.5}
 </style>
 </head>
 <body>
 <header>
  <div><h1 id="hTitle">Quản lý công việc Tổ Kỹ thuật điện &amp; IC</h1><div class="sub" id="hSub">Phòng Kỹ thuật - An toàn</div></div>
  <span class="sp"></span>
- <span class="bk" id="bk" onclick="go('settings')"></span>
+ <span id="who"></span><span class="bk" id="bk" onclick="go('settings')"></span>
 </header>
 <nav id="nav"></nav>
 <main id="view"></main>
@@ -1052,7 +1068,229 @@ function vSettings(){
  <li><b>Xuất Excel / In:</b> mỗi mô-đun đều có nút xuất file Excel (.xls) và in. Khi mở file, Excel có thể hỏi về định dạng, chọn "Yes" để mở.</li></ul></div>`;
 }
 const VIEWS={dash:vDash,tasks:vTasks,week:vWeek,plan:vPlan,ot:vOT,sch:vSch,emu:vEmu,settings:vSettings};
-render();
+/* ================= TÀI KHOẢN - PHÂN QUYỀN - DỮ LIỆU CHUNG (FIREBASE) ================= */
+const FB_EMBED=null;/*__FBCFG__*/
+const FB_CFG_KEY='QLCV_FB_CFG',MAIL_DOM='@todien.example.com',FBV='10.14.1';
+const PERMS={admin:'Quản trị (Tổ trưởng)',duyet:'Quản lý - duyệt (Tổ phó)',cv:'Chuyên viên',xem:'Chỉ xem'};
+const unacc=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D');
+function genUser(name,except){const p=unacc(name).trim().split(/\s+/).filter(Boolean);if(!p.length)return '';
+ const cap=w=>w[0].toUpperCase()+w.slice(1).toLowerCase();let u=cap(p[p.length-1])+p.slice(0,-1).map(w=>w[0].toUpperCase()).join('');
+ let base=u,i=2;while(db.members.some(m=>m!==except&&(m.user||'').toLowerCase()===u.toLowerCase()))u=base+(i++);return u}
+const permOfRole=r=>{const x=unacc(r).toLowerCase();return x.includes('to truong')?'admin':x.includes('to pho')?'duyet':'cv'};
+function migrateMembers(){let ch=false;db.members.forEach(m=>{if(!m.user){m.user=genUser(m.name,m);ch=true}if(!m.perm){m.perm=permOfRole(m.role);ch=true}});return ch}
+const mailOf=u=>String(u||'').trim().toLowerCase()+MAIL_DOM;
+let CUR={offline:true,perm:'admin'},FB=null,CL={},CLO={},SYNC={st:'',err:''},REMOTE_PENDING=false,FB_READY=false;
+const ME=()=>CUR.mid?mById(CUR.mid):null;
+const isAdmin=()=>CUR.perm==='admin',isMgr=()=>CUR.perm==='admin'||CUR.perm==='duyet',canEdit=()=>CUR.perm!=='xem';
+const mineT=t=>!!t&&(t.lead===CUR.mid||(t.support||[]).includes(CUR.mid));
+const mineS=s=>!!s&&(s.members||[]).includes(CUR.mid);
+function fbCfg(){try{const x=JSON.parse(localStorage.getItem(FB_CFG_KEY)||'null');if(x&&x.off)return null;return x&&x.apiKey?x:FB_EMBED}catch(e){return FB_EMBED}}
+function parseCfg(txt){const o={};String(txt).replace(/(\w+)\s*:\s*["']([^"']+)["']/g,(_,k,v)=>{o[k]=v});return o.apiKey&&o.projectId&&o.appId?o:null}
+
+/* ---- Lớp Firebase (nạp từ gstatic) ---- */
+async function loadFB(cfg){
+ const base='https://www.gstatic.com/firebasejs/'+FBV+'/';
+ const [A,U,F]=await Promise.all([import(base+'firebase-app.js'),import(base+'firebase-auth.js'),import(base+'firebase-firestore.js')]);
+ const app=A.initializeApp(cfg),auth=U.getAuth(app),fs=F.getFirestore(app);
+ const commitAll=async ops=>{for(let i=0;i<ops.length;i+=150){const b=F.writeBatch(fs);ops.slice(i,i+150).forEach(o=>o.del?b.delete(F.doc(fs,o.c,o.id)):b.set(F.doc(fs,o.c,o.id),o.d));await b.commit()}};
+ return {
+  onAuth:cb=>U.onAuthStateChanged(auth,u=>cb(u?{email:(u.email||'').toLowerCase()}:null)),
+  signIn:async(e,p,rem)=>{await U.setPersistence(auth,rem?U.browserLocalPersistence:U.browserSessionPersistence);return U.signInWithEmailAndPassword(auth,e,p)},
+  signUp:async(e,p,rem)=>{await U.setPersistence(auth,rem?U.browserLocalPersistence:U.browserSessionPersistence);return U.createUserWithEmailAndPassword(auth,e,p)},
+  signOut:()=>U.signOut(auth),
+  changePw:async(old,nw)=>{const u=auth.currentUser;await U.reauthenticateWithCredential(u,U.EmailAuthProvider.credential(u.email,old));await U.updatePassword(u,nw)},
+  listen:(cb,err)=>F.onSnapshot(F.collection(fs,'qlcv'),snap=>cb(snap.docChanges().map(c=>({id:c.doc.id,type:c.type,data:c.doc.data()}))),err),
+  commit:commitAll,
+  setAcl:d=>F.setDoc(F.doc(fs,'acl','team'),d),
+  getFile:async id=>{const m=await F.getDoc(F.doc(fs,'qlcv_files',id+'~m'));if(!m.exists())return null;const {n,type}=m.data();let s='';
+   for(let i=0;i<n;i++){const c=await F.getDoc(F.doc(fs,'qlcv_files',id+'~'+i));s+=c.data().d}return {dataUrl:s,type}},
+  putFile:async(id,dataUrl,type)=>{const CH=800000,n=Math.ceil(dataUrl.length/CH),ops=[];for(let i=0;i<n;i++)ops.push({c:'qlcv_files',id:id+'~'+i,d:{d:dataUrl.slice(i*CH,(i+1)*CH)}});
+   for(const o of ops)await commitAll([o]);await commitAll([{c:'qlcv_files',id:id+'~m',d:{n,type,at:Date.now()}}])},
+  delFile:async id=>{const m=await F.getDoc(F.doc(fs,'qlcv_files',id+'~m'));const n=m.exists()?m.data().n:0;const ops=[{c:'qlcv_files',id:id+'~m',del:1}];for(let i=0;i<n;i++)ops.push({c:'qlcv_files',id:id+'~'+i,del:1});await commitAll(ops)}
+ }}
+
+/* ---- Chia dữ liệu thành từng mục để nhiều người cùng sửa ---- */
+const U_ARR=['tasks','ot','schedule','plans'],U_MAP=['emu','weekly'],ADM_DOCS=['members','settings'];
+function toUnits(d){const u={members:JSON.stringify(d.members),settings:JSON.stringify(d.settings),seeded:JSON.stringify(d.seeded||{})};
+ const {weeks,...kc}=d.ktkt||{};u.ktcfg=JSON.stringify(kc);for(const w in weeks||{})u['ktw~'+w]=JSON.stringify(weeks[w]);
+ U_ARR.forEach(k=>(d[k]||[]).forEach(x=>{u[k+'~'+x.id]=JSON.stringify(x)}));
+ U_MAP.forEach(k=>{for(const key in d[k]||{})u[k+'~'+key]=JSON.stringify(d[k][key])});return u}
+function fromUnits(u,ord){const d={tasks:[],ot:[],schedule:[],plans:[],emu:{},weekly:{},ktkt:{weeks:{}}};
+ const ids=Object.keys(u).sort((a,b)=>(ord[a]||0)-(ord[b]||0));
+ for(const id of ids){let v;try{v=JSON.parse(u[id])}catch(e){continue}const i=id.indexOf('~');
+  if(i<0){if(id==='ktcfg')Object.assign(d.ktkt,v);else d[id]=v;continue}
+  const k=id.slice(0,i),key=id.slice(i+1);if(k==='ktw')d.ktkt.weeks[key]=v;else if(U_ARR.includes(k))d[k].push(v);else if(U_MAP.includes(k))d[k][key]=v}
+ return d}
+function normDB(d){const def=defaultDB();for(const k of ['members','tasks','ot','schedule'])if(!Array.isArray(d[k]))d[k]=def[k];
+ d.emu=d.emu||{};d.weekly=d.weekly||{};d.plans=d.plans||[];if(!d.ktkt||!d.ktkt.groups){const k=ktDef();d.ktkt=Object.assign(k,d.ktkt||{});d.ktkt.weeks=d.ktkt.weeks||{}}
+ if(!d.ktkt.scPlants){const k=ktDef();d.ktkt.scPlants=k.scPlants;d.ktkt.scCats=k.scCats}d.seeded=d.seeded||{};d.settings=Object.assign(def.settings,d.settings||{});return d}
+function applyCloud(){const lb=db.lastBackup;db=normDB(fromUnits(CL,CLO));db.lastBackup=localStorage.getItem(KEY+'_LB_ONLINE')||lb;migrateMembers();
+ const m=db.members.find(x=>mailOf(x.user)===CUR.email);
+ if(!m){LG_KEEP='Tài khoản '+CUR.email.replace(MAIL_DOM,'')+' chưa được gán cho thành viên nào trong tổ. Báo Tổ trưởng kiểm tra.';showLogin(LG_KEEP);FB.signOut();return false}
+ CUR.mid=m.id;CUR.perm=m.active?(m.perm||'cv'):'xem';CUR.name=m.name;CUR.user=m.user;return true}
+function setSync(st,err){SYNC.st=st;SYNC.err=err||'';drawWho()}
+function cloudSave(){if(!FB||!FB_READY||CUR.offline)return;
+ const U=toUnits(db),ops=[];const by=CUR.user||'';
+ for(const id in U){if(U[id]===CL[id])continue;if(!isAdmin()&&ADM_DOCS.includes(id))continue;if(!CLO[id])CLO[id]=Date.now()+ops.length;
+  ops.push({c:'qlcv',id,d:{v:U[id],o:CLO[id],by,at:Date.now()}});CL[id]=U[id]}
+ for(const id in CL)if(!(id in U)){if(!isAdmin()&&ADM_DOCS.includes(id))continue;ops.push({c:'qlcv',id,del:1});delete CL[id]}
+ if(!ops.length)return;setSync('dang');
+ FB.commit(ops).then(()=>setSync('ok')).catch(e=>{setSync('loi',e.message);alert('Không lưu được lên dữ liệu chung: '+fbErr(e)+'\nDữ liệu sẽ được tải lại từ máy chủ.');resync()});
+ if(isAdmin()&&ops.some(o=>o.id==='members'))pushAcl()}
+function pushAcl(){if(!FB||!isAdmin())return Promise.resolve();const ms=db.members.filter(m=>m.user);
+ return FB.setAcl({emails:ms.filter(m=>m.active).map(m=>mailOf(m.user)),admins:ms.filter(m=>m.active&&m.perm==='admin').map(m=>mailOf(m.user)),at:Date.now()}).catch(e=>console.warn('acl',e))}
+let UNSUB=null;
+function resync(){if(UNSUB)UNSUB();CL={};CLO={};FB_READY=false;startListen()}
+function startListen(){let first=true;setSync('dang');
+ UNSUB=FB.listen(ch=>{ch.forEach(c=>{if(c.type==='removed'){delete CL[c.id];delete CLO[c.id]}else{CL[c.id]=c.data.v;CLO[c.id]=c.data.o||0}});
+  if(first){first=false;FB_READY=true;setSync('ok');
+   if(!Object.keys(CL).length)return cloudEmpty();
+   if(!applyCloud())return;hideLogin();if(isAdmin())pushAcl();render();return}
+  if(document.getElementById('modal').classList.contains('show')){REMOTE_PENDING=true;return}
+  if(applyCloud())render()},
+ e=>{setSync('loi',e.message);if(first)showLogin(e.code==='permission-denied'?'Tài khoản này chưa có quyền truy cập dữ liệu chung (chưa có trong danh sách tổ). Báo Tổ trưởng.':'Lỗi kết nối dữ liệu: '+fbErr(e),true)})}
+function cloudEmpty(){const local=load();db=local;migrateMembers();const m=db.members.find(x=>mailOf(x.user)===CUR.email);
+ if(m&&m.perm==='admin'){CUR.mid=m.id;CUR.perm='admin';CUR.name=m.name;CUR.user=m.user;hideLogin();render();
+  if(confirm('Dữ liệu chung trên mạng đang trống.\nĐưa toàn bộ dữ liệu đang có trên máy này (công tác, thêm giờ, lịch, thi đua, KT-KT, file đính kèm...) lên để cả tổ dùng chung?'))pushAll();return}
+ showLogin('Dữ liệu chung chưa được khởi tạo. Tổ trưởng cần đăng nhập trước để đưa dữ liệu lên.',true)}
+async function pushAll(){if(!FB||!isAdmin())return;migrateMembers();await pushAcl();cloudSave();
+ const metas=db.schedule.flatMap(s=>s.attachments||[]);let ok=0,miss=0;setSync('dang');
+ for(const m of metas){try{const b=await IDB.get(m.id);if(!b){miss++;continue}await FB.putFile(m.id,await fileToDataURL(b),b.type||m.type);ok++}catch(e){miss++;console.warn(e)}}
+ setSync('ok');alert('Đã đưa dữ liệu lên mạng.'+(metas.length?`\nFile đính kèm: ${ok} file đã tải lên`+(miss?`, ${miss} file không có trên máy này`:''):''))}
+function fbErr(e){const c=(e&&e.code)||'';return ({'auth/invalid-credential':'Sai tài khoản hoặc mật khẩu.','auth/wrong-password':'Sai mật khẩu.','auth/user-not-found':'Tài khoản chưa được tạo.',
+ 'auth/email-already-in-use':'Tài khoản này đã được tạo rồi, hãy đăng nhập. Nếu quên mật khẩu, báo Tổ trưởng xóa tài khoản trên Firebase rồi tạo lại.',
+ 'auth/weak-password':'Mật khẩu tối thiểu 6 ký tự.','auth/too-many-requests':'Nhập sai quá nhiều lần, thử lại sau ít phút.','auth/network-request-failed':'Không có kết nối mạng.',
+ 'auth/operation-not-allowed':'Firebase chưa bật đăng nhập Email/Password.','auth/invalid-email':'Tên tài khoản không hợp lệ.','auth/requires-recent-login':'Cần đăng nhập lại.',
+ 'permission-denied':'Không có quyền (kiểm tra Rules và danh sách tổ).','unavailable':'Mất kết nối máy chủ.'})[c]||((e&&e.message)||String(e))}
+
+/* ---- Màn hình đăng nhập ---- */
+let LG_FIRST=false,LG_KEEP='';
+function showLogin(msg,fatal){let w=document.getElementById('login');if(!w){w=document.createElement('div');w.id='login';document.body.appendChild(w)}
+ w.innerHTML=`<div class="lg-box"><div class="lg-logo">⚡</div><h2>Quản lý công việc</h2><div class="mut" style="margin-bottom:14px">${esc(db.settings.teamName)} · ${esc(db.settings.dept)}</div>
+ ${fatal?'':`<label>Tài khoản<input id="lgU" placeholder="VD: AnTV" autocomplete="username" value="${esc(localStorage.getItem('QLCV_LAST_USER')||'')}"></label>
+ <label>${LG_FIRST?'Đặt mật khẩu mới (tối thiểu 6 ký tự)':'Mật khẩu'}<input id="lgP" type="password" autocomplete="${LG_FIRST?'new-password':'current-password'}" onkeydown="if(event.key==='Enter'&&!${LG_FIRST})doLogin()"></label>
+ ${LG_FIRST?`<label>Nhập lại mật khẩu<input id="lgP2" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')doLogin()"></label>`:''}
+ <label class="lg-ck"><input type="checkbox" id="lgR" checked> Ghi nhớ đăng nhập trên máy này</label>`}
+ <div id="lgMsg" class="${msg?'lg-err':''}">${esc(msg||'')}</div>
+ ${fatal?`<button class="btn p lg-btn" onclick="FB&&FB.signOut();showLogin()">Đăng nhập tài khoản khác</button>`:`<button class="btn p lg-btn" id="lgBtn" onclick="doLogin()">${LG_FIRST?'Tạo mật khẩu & đăng nhập':'Đăng nhập'}</button>
+ <a href="#" class="lg-lnk" onclick="LG_FIRST=!LG_FIRST;showLogin();return false">${LG_FIRST?'← Đã có mật khẩu, quay lại đăng nhập':'Lần đầu đăng nhập? Tạo mật khẩu'}</a>`}
+ <div class="lg-help">Tài khoản = tên + chữ cái đầu họ, tên đệm (không dấu). VD: Trần Văn An → <b>AnTV</b>, Lê Thị Bình → <b>BinhLT</b>.</div></div>`;
+ w.style.display='flex';const u=document.getElementById('lgU');if(u)(u.value?document.getElementById('lgP'):u).focus()}
+function hideLogin(){const w=document.getElementById('login');if(w)w.style.display='none'}
+async function doLogin(){const u=document.getElementById('lgU').value.trim(),p=document.getElementById('lgP').value,rem=document.getElementById('lgR').checked,msg=document.getElementById('lgMsg');
+ const say=t=>{msg.textContent=t;msg.className='lg-err'};
+ if(!/^[A-Za-z][A-Za-z0-9]{1,30}$/.test(u))return say('Nhập tên tài khoản không dấu, không khoảng trắng (VD: AnTV).');
+ if(p.length<6)return say('Mật khẩu tối thiểu 6 ký tự.');
+ if(LG_FIRST&&p!==document.getElementById('lgP2').value)return say('Hai lần nhập mật khẩu không khớp.');
+ if(!FB)return say('Chưa kết nối được máy chủ. Kiểm tra mạng rồi tải lại trang.');
+ const b=document.getElementById('lgBtn');b.disabled=true;msg.className='';msg.textContent='Đang đăng nhập…';
+ try{await (LG_FIRST?FB.signUp:FB.signIn)(mailOf(u),p,rem);localStorage.setItem('QLCV_LAST_USER',u);LG_FIRST=false;msg.textContent='Đang tải dữ liệu chung…'}
+ catch(e){b.disabled=false;say(fbErr(e)+(e.code==='auth/invalid-credential'&&!LG_FIRST?' Nếu đây là lần đầu, bấm "Lần đầu đăng nhập? Tạo mật khẩu".':''))}}
+function logout(){if(!confirm('Đăng xuất khỏi tài khoản '+(CUR.user||'')+'?'))return;FB.signOut()}
+function changePw(){openModal('Đổi mật khẩu',`<div class="frm"><label class="full">Mật khẩu hiện tại<input type="password" id="pw0"></label><label class="full">Mật khẩu mới (tối thiểu 6 ký tự)<input type="password" id="pw1"></label><label class="full">Nhập lại mật khẩu mới<input type="password" id="pw2"></label></div>`,()=>{
+ const a=pw0.value,b=pw1.value;if(b.length<6){alert('Mật khẩu mới tối thiểu 6 ký tự');return false}if(b!==pw2.value){alert('Hai lần nhập không khớp');return false}
+ FB.changePw(a,b).then(()=>alert('Đã đổi mật khẩu.')).catch(e=>alert('Không đổi được: '+fbErr(e)))},{saveText:'Đổi mật khẩu'})}
+function drawWho(){const el=document.getElementById('who');if(!el)return;
+ if(CUR.offline){el.innerHTML=`<span class="who-b" title="Chưa kết nối dữ liệu chung. Dữ liệu chỉ lưu trên trình duyệt này." onclick="go('settings')">💻 Trên máy này</span>`;return}
+ const dot={ok:['●','Đã đồng bộ','ok'],dang:['●','Đang đồng bộ…','dang'],loi:['●','Lỗi đồng bộ: '+SYNC.err,'loi']}[SYNC.st]||['','',''];
+ el.innerHTML=`<span class="sync ${dot[2]}" title="${esc(dot[1])}">${dot[0]} ${SYNC.st==='loi'?'Lỗi đồng bộ':SYNC.st==='dang'?'Đang lưu…':'Dữ liệu chung'}</span>
+ ${CUR.user?`<span class="who-b" onclick="go('settings')" title="${esc(PERMS[CUR.perm]||'')}">👤 ${esc(CUR.name||'')} · ${esc(CUR.user)}</span><span class="who-b" onclick="logout()">Đăng xuất</span>`:''}`}
+
+/* ---- Phân quyền thao tác ---- */
+function deny(msg){alert('Tài khoản '+(CUR.user||'')+' ('+(PERMS[CUR.perm]||'')+') không có quyền: '+msg+'.');render()}
+function guard(name,test,msg){const f=window[name];if(typeof f!=='function')return;window[name]=function(...a){if(!test(...a))return deny(typeof msg==='function'?msg(...a):msg);return f.apply(this,a)}}
+const tById=id=>db.tasks.find(x=>x.id===id),oById=id=>db.ot.find(x=>x.id===id),sById=id=>db.schedule.find(x=>x.id===id);
+guard('editTask',id=>canEdit()&&(!id||isMgr()||mineT(tById(id))),'sửa công tác không do mình chủ trì/phối hợp');
+guard('updTask',id=>canEdit()&&(isMgr()||mineT(tById(id))),'cập nhật công tác không do mình chủ trì/phối hợp');
+guard('delUpd',tid=>canEdit()&&(isMgr()||mineT(tById(tid))),'xóa cập nhật của công tác này');
+guard('delTask',()=>isMgr(),'xóa công tác (chỉ Tổ trưởng/Tổ phó)');
+guard('copyTasks',()=>isMgr(),'sao chép kế hoạch công tác');
+guard('editOT',id=>{const o=id&&oById(id);return canEdit()&&(!id||isMgr()||(o&&o.member===CUR.mid&&o.approved!=='duyet'))},'sửa thêm giờ của người khác hoặc đã được duyệt');
+guard('delOT',id=>{const o=oById(id);return canEdit()&&(isMgr()||(o&&o.member===CUR.mid&&o.approved!=='duyet'))},'xóa thêm giờ của người khác hoặc đã được duyệt');
+guard('apprOT',()=>isMgr(),'duyệt thêm giờ');
+guard('editSch',id=>canEdit()&&(!id||isMgr()||mineS(sById(id))),'sửa lịch của người khác');
+guard('delSch',id=>canEdit()&&(isMgr()||mineS(sById(id))),'xóa lịch của người khác');
+guard('dupSch',id=>canEdit()&&(isMgr()||mineS(sById(id))),'nhân bản lịch của người khác');
+guard('cellClick',(mid)=>canEdit()&&(isMgr()||mid===CUR.mid||db.schedule.some(s=>s.members.includes(mid)&&s.members.includes(CUR.mid))),'thêm/sửa lịch của người khác');
+guard('wSet',el=>canEdit()&&(el.dataset.t?(isMgr()||mineT(tById(el.dataset.t))):isMgr()),'sửa báo cáo tuần của công tác không do mình phụ trách');
+['emuSet','emuFill'].forEach(n=>guard(n,()=>isMgr(),'chấm điểm thi đua'));guard('emuLock',()=>isAdmin(),'khóa/mở khóa bảng thi đua (chỉ Tổ trưởng)');
+['ktSet','ktConfig'].forEach(n=>guard(n,()=>isMgr(),'nhập chỉ tiêu KT-KT/sự cố'));
+['editPlan','delPlan','plCopyPrev','plToTasks'].forEach(n=>guard(n,()=>isMgr(),'lập/sửa kế hoạch (chỉ Tổ trưởng/Tổ phó)'));
+{const f=window.resetAll;window.resetAll=function(){if(!CUR.offline&&prompt('CẢNH BÁO: đang dùng dữ liệu chung. Thao tác này XÓA dữ liệu của CẢ TỔ trên mạng.\nGõ XOA để xác nhận:')!=='XOA')return;return f.apply(this,arguments)}}
+{const f=window.importJSON;window.importJSON=function(inp){if(!CUR.offline&&!confirm('Đang dùng dữ liệu chung: khôi phục từ file sẽ GHI ĐÈ dữ liệu của cả tổ trên mạng. Tiếp tục?')){inp.value='';return}return f.apply(this,arguments)}}
+['setS','memSet','addMem','delMem','moveMem','grpSet','grpDel','grpMove','critSet','addCrit','delCrit','gradeSet','otTSet','importJSON','resetAll'].forEach(n=>guard(n,()=>isAdmin(),'thay đổi cài đặt (chỉ Tổ trưởng)'));
+{const f=window.editOT;window.editOT=function(id){f.apply(this,arguments);if(!isMgr()){const m=document.getElementById('f_member'),a=document.getElementById('f_approved');if(m&&CUR.mid&&!id){m.value=CUR.mid}if(m)m.disabled=true;if(a)a.disabled=true}}}
+{const f=window.updTask;window.updTask=function(id){f.apply(this,arguments);const b=document.getElementById('f_by');if(b&&CUR.mid&&!b.value)b.value=CUR.mid}}
+
+/* ---- Lưu: trên máy hoặc lên dữ liệu chung ---- */
+{const f=save;window.save=function(){if(CUR.offline)return f();if(db.lastBackup)localStorage.setItem(KEY+'_LB_ONLINE',db.lastBackup);cloudSave();updBackup()}}
+{const f=closeModal;window.closeModal=function(){f();if(REMOTE_PENDING){REMOTE_PENDING=false;if(applyCloud())render()}}}
+{const f=saveAtt;window.saveAtt=function(target){const add=SA.add.slice(),rm=SA.removed.slice();f(target);if(CUR.offline||!FB)return;setSync('dang');
+ Promise.all([...add.map(a=>fileToDataURL(a.file).then(u=>FB.putFile(a.meta.id,u,a.meta.type))),...rm.map(id=>FB.delFile(id))]).then(()=>setSync('ok')).catch(e=>{setSync('loi',e.message);alert('Không tải được file đính kèm lên mạng: '+fbErr(e))})}}
+window.viewAtt=function(fid){const m=db.schedule.flatMap(s=>s.attachments||[]).find(x=>x.id===fid)||(SA?SA.keep.find(x=>x.id===fid):null);
+ IDB.get(fid).then(async b=>{if(!b&&FB&&!CUR.offline){const r=await FB.getFile(fid);if(r){b=await (await fetch(r.dataUrl)).blob();IDB.put(fid,b).catch(()=>{})}}
+  if(!b)return alert('Không tìm thấy nội dung file.');showBlob(m?m.name:'file',b)}).catch(e=>alert('Lỗi đọc file: '+fbErr(e)))};
+{const f=addAttFiles;window.addAttFiles=function(inp){if(!CUR.offline){const big=[...inp.files].filter(x=>x.size>5*1048576);if(big.length){alert('Khi dùng dữ liệu chung, mỗi file tối đa 5 MB:\n'+big.map(x=>x.name).join('\n')+'\nHãy nén/giảm dung lượng file (VD: chụp ảnh độ phân giải thấp hơn).');inp.value='';return}}return f(inp)}}
+
+/* ---- Cài đặt: tài khoản, phân quyền, kết nối ---- */
+function acSet(id,k,v){if(!isAdmin())return deny('phân quyền');const m=mById(id);if(k==='user'){v=v.trim();if(!/^[A-Za-z][A-Za-z0-9]{1,30}$/.test(v)){alert('Tên tài khoản không dấu, không khoảng trắng');return render()}
+ if(db.members.some(x=>x!==m&&(x.user||'').toLowerCase()===v.toLowerCase())){alert('Tên tài khoản đã có người dùng');return render()}}
+ if(k==='perm'&&m.id===CUR.mid&&v!=='admin'&&!confirm('Bạn đang tự bỏ quyền Quản trị của chính mình. Tiếp tục?'))return render();
+ m[k]=v;save();render()}
+function fbConnect(){const o=parseCfg(document.getElementById('fbCfgTxt').value);if(!o)return alert('Không đọc được cấu hình. Hãy dán nguyên đoạn const firebaseConfig = {...} lấy từ Firebase.');
+ localStorage.setItem(FB_CFG_KEY,JSON.stringify(o));alert('Đã lưu cấu hình. Trang sẽ tải lại để đăng nhập.');location.reload()}
+function fbOffline(){if(!confirm('Ngắt kết nối dữ liệu chung trên trình duyệt này?\nỨng dụng sẽ quay về dùng dữ liệu riêng trên máy (không đồng bộ với tổ).'))return;
+ localStorage.setItem(FB_CFG_KEY,JSON.stringify({off:1}));if(FB)FB.signOut().finally(()=>location.reload());else location.reload()}
+function fbOnline(){localStorage.removeItem(FB_CFG_KEY);location.reload()}
+function rulesText(){const own=db.members.filter(m=>m.perm==='admin'&&m.user).map(m=>`'${mailOf(m.user)}'`);
+ return `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null && request.auth.token.email != null; }
+    function owner() { return signed() && request.auth.token.email in [${own.join(', ')}]; }
+    function acl() { return get(/databases/$(database)/documents/acl/team).data; }
+    function hasAcl() { return exists(/databases/$(database)/documents/acl/team); }
+    function team() { return owner() || (signed() && hasAcl() && request.auth.token.email in acl().emails); }
+    function admin() { return owner() || (signed() && hasAcl() && request.auth.token.email in acl().admins); }
+    match /acl/{d} { allow read: if team(); allow write: if admin(); }
+    match /qlcv/{k} { allow read: if team(); allow write: if team() && (!(k in ['members', 'settings']) || admin()); }
+    match /qlcv_files/{k} { allow read, write: if team(); }
+  }
+}`}
+function copyRules(){const t=document.getElementById('rulesTxt');t.select();navigator.clipboard?navigator.clipboard.writeText(t.value).then(()=>alert('Đã sao chép Rules')):document.execCommand('copy')}
+function vAccount(){const me=ME();const cfg=fbCfg();
+ const accRows=db.members.map((m,i)=>`<tr${m.active?'':' class="mut"'}><td class="c">${i+1}</td><td>${esc(m.name)}<div class="mut">${esc(m.role)}</div></td>
+  <td>${isAdmin()?`<input value="${esc(m.user||'')}" style="width:110px" onchange="acSet('${m.id}','user',this.value)">`:`<b>${esc(m.user||'')}</b>`}</td>
+  <td>${isAdmin()?`<select onchange="acSet('${m.id}','perm',this.value)">${Object.entries(PERMS).map(([k,l])=>`<option value="${k}"${m.perm===k?' selected':''}>${l}</option>`).join('')}</select>`:esc(PERMS[m.perm]||'')}</td></tr>`).join('');
+ const conn=CUR.offline?`<p>Ứng dụng đang dùng <b>dữ liệu riêng trên trình duyệt này</b>, chưa đăng nhập, không đồng bộ với tổ.</p>
+   ${FB_EMBED&&!fbCfg()?`<p><button class="btn p" onclick="fbOnline()">Bật lại dữ liệu chung của tổ</button></p>`:''}
+   <p>Để cả tổ đăng nhập và dùng chung một bộ dữ liệu, dán cấu hình Firebase (<code>const firebaseConfig = {...}</code>) vào ô dưới:</p>
+   <textarea id="fbCfgTxt" rows="6" style="width:100%;font-family:monospace;font-size:12px" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;...&quot;,&#10;  authDomain: &quot;...&quot;,&#10;  projectId: &quot;...&quot;, ...&#10;};"></textarea>
+   <p><button class="btn p" onclick="fbConnect()">Kết nối dữ liệu chung</button></p>`
+  :`<p>Đang dùng <b>dữ liệu chung</b> (Firebase: <code>${esc((cfg||{}).projectId||'')}</code>). Mọi thay đổi được lưu lên mạng và hiện ngay trên máy các thành viên khác.</p>
+   ${isAdmin()?`<p><button class="btn" onclick="if(confirm('Ghi toàn bộ dữ liệu đang hiển thị (kèm file đính kèm có trên máy này) lên dữ liệu chung?'))pushAll()">⇪ Đưa lại toàn bộ dữ liệu + file lên mạng</button> <button class="btn" onclick="fbOffline()">Ngắt kết nối trên trình duyệt này</button></p>`:''}`;
+ return `<div class="grid2" style="margin-bottom:14px"><div class="card"><h3>Tài khoản của tôi</h3>
+  ${CUR.offline?'<p class="mut">Chế độ trên máy: không cần đăng nhập, có toàn quyền.</p>':`<table><tr><th>Họ tên</th><td>${esc(me?me.name:'')}</td></tr><tr><th>Tài khoản</th><td><b>${esc(CUR.user||'')}</b></td></tr><tr><th>Quyền</th><td>${esc(PERMS[CUR.perm]||'')}</td></tr></table>
+  <p><button class="btn" onclick="changePw()">Đổi mật khẩu</button> <button class="btn" onclick="logout()">Đăng xuất</button> <button class="btn" onclick="backupJSON()">Tải bản sao lưu (JSON)</button></p>`}
+  <h3 style="margin-top:14px">Kết nối dữ liệu chung</h3>${conn}</div>
+  <div class="card"><h3>Tài khoản đăng nhập & phân quyền</h3><table><tr><th class="c">TT</th><th>Thành viên</th><th>Tài khoản</th><th>Quyền</th></tr>${accRows}</table>
+  <div class="mut" style="margin-top:8px;line-height:1.6"><b>Quản trị:</b> toàn quyền, cài đặt, thành viên, khóa thi đua.<br><b>Quản lý - duyệt:</b> sửa mọi công tác, duyệt thêm giờ, chấm thi đua, nhập KT-KT, lập kế hoạch.<br><b>Chuyên viên:</b> cập nhật công tác mình chủ trì/phối hợp, đăng ký thêm giờ và lịch của mình.<br><b>Chỉ xem:</b> xem và xuất báo cáo.<br>Lần đầu, mỗi người bấm "Lần đầu đăng nhập? Tạo mật khẩu" để tự đặt mật khẩu. Quên mật khẩu: Tổ trưởng vào Firebase › Authentication xóa tài khoản đó để người dùng tạo lại.</div>
+  ${isAdmin()?`<details style="margin-top:10px"><summary><b>Rules bảo mật Firestore</b> (dán vào Firebase › Firestore › Rules)</summary><textarea id="rulesTxt" rows="14" readonly style="width:100%;font-family:monospace;font-size:11px">${esc(rulesText())}</textarea><button class="btn s" onclick="copyRules()">Sao chép Rules</button></details>`:''}
+  </div></div>`}
+{const f=vSettings;window.vSettings=function(){const a=vAccount();const b=f();return a+(isAdmin()?b:`<div class="card" style="margin-bottom:10px;background:#fff8e6">Phần cài đặt bên dưới chỉ Tổ trưởng (Quản trị) được thay đổi.</div><fieldset disabled style="border:0;padding:0;margin:0;min-width:0">${b}</fieldset>`)}}
+{const f=render;window.render=function(){document.body.classList.toggle('ro',!canEdit());document.body.classList.toggle('nmgr',!isMgr());f();drawWho()}}
+VIEWS.settings=window.vSettings;
+
+function authStart(){migrateMembers();const cfg=fbCfg();
+ if(!cfg){CUR={offline:true,perm:'admin'};render();return}
+ CUR={offline:false,perm:'xem'};db=defaultDB();render();showLogin('Đang kết nối máy chủ…',false);
+ loadFB(cfg).then(api=>{FB=api;const m=document.getElementById('lgMsg');if(m&&m.textContent.startsWith('Đang kết nối')){m.textContent=''}
+  api.onAuth(u=>{if(UNSUB){UNSUB();UNSUB=null}FB_READY=false;CL={};CLO={};
+   if(u){CUR={offline:false,perm:'xem',email:u.email};const m=document.getElementById('lgMsg');if(m)m.textContent='Đang tải dữ liệu chung…';startListen()}
+   else{CUR={offline:false,perm:'xem'};db=defaultDB();render();showLogin(LG_KEEP);LG_KEEP=''}})})
+ .catch(e=>showLogin('Không tải được thư viện Firebase (kiểm tra kết nối Internet): '+e.message,true))}
+
+authStart();
 </script>
 </body>
 </html>
